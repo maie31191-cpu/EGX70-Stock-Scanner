@@ -1,16 +1,22 @@
 import yfinance as yf
 import pandas as pd
-import ta
+import numpy as np
 
-# قائمة بأبرز أسهم البورصة المصرية EGX
+# قائمة بأهم الأسهم النشطة في البورصة المصرية (محدثة ونظيفة)
 tickers = [
     "COMI.CA", "EAST.CA", "TMGH.CA", "HRHO.CA", "SWDY.CA", 
-    "MFPC.CA", "EKHO.CA", "ETEL.CA", "AMOC.CA", "CERE.CA",
-    "ESRS.CA", "ORWE.CA", "ISPH.CA", "PHDC.CA", "ABUK.CA",
-    "HELI.CA", "AUTO.CA", "BINV.CA", "JUFO.CA", "ORAS.CA"
+    "MFPC.CA", "EKHO.CA", "ETEL.CA", "AMOC.CA", "ORWE.CA", 
+    "ISPH.CA", "PHDC.CA", "ABUK.CA", "HELI.CA", "JUFO.CA"
 ]
 
 results = []
+
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    return 100 - (100 / (1 + rs))
 
 for ticker in tickers:
     try:
@@ -20,74 +26,69 @@ for ticker in tickers:
         if df.empty or len(df) < 200:
             continue
 
-        # التعامل مع أبعاد البيانات في yfinance
         if isinstance(df.columns, pd.MultiIndex):
-            close_prices = df['Close'][ticker]
+            close = df['Close'][ticker]
         else:
-            close_prices = df['Close']
+            close = df['Close']
 
         # 1. حساب المتوسطات الأسية EMA 50 & EMA 200
-        ema_50 = ta.trend.ema_indicator(close_prices, window=50)
-        ema_200 = ta.trend.ema_indicator(close_prices, window=200)
+        ema_50 = close.ewm(span=50, adjust=False).mean()
+        ema_200 = close.ewm(span=200, adjust=False).mean()
 
         # 2. حساب مؤشر القوة النسبية RSI 14
-        rsi = ta.momentum.rsi(close_prices, window=14)
+        rsi = calculate_rsi(close, 14)
 
-        # 3. حساب مؤشر MACD والهستوجرام
-        macd_object = ta.trend.MACD(close_prices)
-        macd_line = macd_object.macd()
-        signal_line = macd_object.macd_signal()
-        histogram = macd_object.macd_diff()
+        # 3. حساب مؤشر MACD (12, 26, 9) والهستوجرام
+        ema_12 = close.ewm(span=12, adjust=False).mean()
+        ema_26 = close.ewm(span=26, adjust=False).mean()
+        macd_line = ema_12 - ema_26
+        signal_line = macd_line.ewm(span=9, adjust=False).mean()
+        histogram = macd_line - signal_line
 
-        # أخذ قيم آخر شمعة (إغلاق الجلسة) والشمعة التي قبلها
-        last_close = close_prices.iloc[-1]
-        curr_ema50 = ema_50.iloc[-1]
-        curr_ema200 = ema_200.iloc[-1]
-        curr_rsi = rsi.iloc[-1]
+        # أخذ قيم شمعة الإغلاق الحالي والشمعة السابقة
+        curr_close = close.iloc[-1]
+        c_ema50, c_ema200 = ema_50.iloc[-1], ema_200.iloc[-1]
+        c_rsi = rsi.iloc[-1]
         
-        curr_macd = macd_line.iloc[-1]
-        curr_signal = signal_line.iloc[-1]
-        prev_macd = macd_line.iloc[-2]
-        prev_signal = signal_line.iloc[-2]
+        c_macd, c_signal = macd_line.iloc[-1], signal_line.iloc[-1]
+        p_macd, p_signal = macd_line.iloc[-2], signal_line.iloc[-2]
         
-        curr_hist = histogram.iloc[-1]
-        prev_hist = histogram.iloc[-2]
+        c_hist, p_hist = histogram.iloc[-1], histogram.iloc[-2]
 
-        # الشروط المطلوب تحققها:
-        # الشرط الأول: EMA 50 أعلى من EMA 200
-        cond1 = curr_ema50 > curr_ema200
+        # الشروط المطلوبة:
+        # 1. EMA 50 أعلى من EMA 200
+        cond1 = c_ema50 > c_ema200
         
-        # الشرط الثاني: RSI بين 50 و 65
-        cond2 = 50 <= curr_rsi <= 65
+        # 2. RSI بين 50 و 65
+        cond2 = 50 <= c_rsi <= 65
         
-        # الشرط الثالث: تقاطع MACD لأعلى (كان تحته وأصبح فوقه) مع زخم في الهستوجرام (ارتفاع قيمة الهستوجرام)
-        macd_cross_up = (prev_macd <= prev_signal) and (curr_macd > curr_signal)
-        histogram_momentum = curr_hist > prev_hist and curr_hist > 0
-        cond3 = macd_cross_up and histogram_momentum
+        # 3. تقاطع MACD لأعلى مع زخم إيجابي في الهستوجرام
+        macd_cross_up = (p_macd <= p_signal) and (c_macd > c_signal)
+        hist_momentum = (c_hist > p_hist) and (c_hist > 0)
+        cond3 = macd_cross_up and hist_momentum
 
-        # تجميع الأسهم التي تطابق كافة الشروط
+        # إضافة السهم إذا تحققت كافة الشروط
         if cond1 and cond2 and cond3:
             results.append({
                 "Ticker": ticker,
-                "Price": round(last_close, 2),
-                "RSI": round(curr_rsi, 2),
-                "EMA_50": round(curr_ema50, 2),
-                "EMA_200": round(curr_ema200, 2),
+                "Price": round(float(curr_close), 2),
+                "RSI": round(float(c_rsi), 2),
+                "EMA_50": round(float(c_ema50), 2),
+                "EMA_200": round(float(c_ema200), 2),
                 "Signal": "فرصة دخول ممتازة"
             })
 
-    except Exception as e:
+    except Exception:
         continue
 
 # طباعة الجدول النهائي
-results_df = pd.DataFrame(results)
-
 print("=" * 65)
 print("             نتائج فحص البورصة المصرية (EGX) - شروط التقاطع والزخم             ")
 print("=" * 65)
 
-if not results_df.empty:
-    print(results_df.to_string(index=False))
+if results:
+    res_df = pd.DataFrame(results)
+    print(res_df.to_string(index=False))
 else:
-    print("لا توجد أسهم تطابق الشروط الفنية المحددة في إغلاق اليوم.")
+    print("لا توجد أسهم تطابق كافة الشروط الفنية في إغلاق اليوم.")
 print("=" * 65)
