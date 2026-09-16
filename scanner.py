@@ -1,91 +1,93 @@
-import pandas as pd
 import yfinance as yf
-import numpy as np
+import pandas as pd
+import ta
 
-# قائمة موسعة تشمل أنشط أسهم البورصة المصرية (EGX30 & EGX70)
-EGX_ALL_STOCKS = [
-    "COMI.CA", "EAST.CA", "SWDY.CA", "HRHO.CA", "MFPC.CA", "HELI.CA", "TMGH.CA",
-    "MCRO.CA", "BTFH.CA", "EFIH.CA", "ABUK.CA", "ETEL.CA", "EKHO.CA", "AMOC.CA",
-    "ORAS.CA", "CERE.CA", "ISPH.CA", "CLHO.CA", "JUFO.CA", "PHDC.CA", "MNHD.CA",
-    "AUTO.CA", "ALCN.CA", "SKPC.CA", "EGAL.CA", "GBCO.CA", "ORWE.CA", "BINV.CA",
-    "RTAI.CA", "ACGC.CA", "CCAP.CA", "PORT.CA", "KABO.CA", "ESRS.CA", "EFTC.CA"
+# قائمة بأبرز أسهم البورصة المصرية EGX
+tickers = [
+    "COMI.CA", "EAST.CA", "TMGH.CA", "HRHO.CA", "SWDY.CA", 
+    "MFPC.CA", "EKHO.CA", "ETEL.CA", "AMOC.CA", "CERE.CA",
+    "ESRS.CA", "ORWE.CA", "ISPH.CA", "PHDC.CA", "ABUK.CA",
+    "HELI.CA", "AUTO.CA", "BINV.CA", "JUFO.CA", "ORAS.CA"
 ]
 
-def calculate_rsi(data, window=14):
-    delta = data.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+results = []
 
-def scan_egx_market():
-    results = []
-    print("--- جاري فحص جميع أسهم البورصة المصرية واختيار الأفضل (فريم أسبوعي) ---\n")
-    
-    for ticker in EGX_ALL_STOCKS:
-        try:
-            stock = yf.Ticker(ticker)
-            # جلب البيانات لآخر سنتين بفريم أسبوعي
-            df = stock.history(period="2y", interval="1wk")
-            if df.empty or len(df) < 15:
-                continue
-
-            df['RSI'] = calculate_rsi(df['Close'])
-            latest_price = round(df['Close'].iloc[-1], 2)
-            latest_rsi = round(df['RSI'].iloc[-1], 2)
-
-            # البيانات المالية
-            info = stock.info
-            pe_ratio = round(info.get('trailingPE', 0), 2) if info.get('trailingPE') else np.nan
-            pb_ratio = round(info.get('priceToBook', 0), 2) if info.get('priceToBook') else np.nan
-
-            # تحديد جودة الفرصة
-            opportunity = "عادي"
-            score = 0  # نقاط لترتيب الأفضلية
-
-            if latest_rsi <= 35:
-                opportunity = "فرصة ذهبية (تجميع حاد)"
-                score += 3
-            elif 35 < latest_rsi <= 45:
-                opportunity = "فرصة ارتداد جيدة"
-                score += 2
-            elif latest_rsi >= 70:
-                opportunity = "تشبع شرائي (قريب من قمة)"
-                score -= 1
-
-            if not np.isnan(pe_ratio) and 0 < pe_ratio < 10:
-                score += 1
-            if not np.isnan(pb_ratio) and 0 < pb_ratio < 1.5:
-                score += 1
-
-            results.append({
-                'Ticker': ticker,
-                'Price': latest_price,
-                'RSI_Weekly': latest_rsi,
-                'P/E': pe_ratio,
-                'P/B': pb_ratio,
-                'Opportunity': opportunity,
-                'Score': score
-            })
-        except Exception:
+for ticker in tickers:
+    try:
+        # جلب بيانات السهم اليومية
+        df = yf.download(ticker, period="1y", interval="1d", progress=False)
+        
+        if df.empty or len(df) < 200:
             continue
 
-    if not results:
-        print("لم يتم العثور على بيانات الماركت.")
-        return
+        # التعامل مع أبعاد البيانات في yfinance
+        if isinstance(df.columns, pd.MultiIndex):
+            close_prices = df['Close'][ticker]
+        else:
+            close_prices = df['Close']
 
-    # تحويل لجدول وترتيب الأسهم من الأفضل للأقل
-    res_df = pd.DataFrame(results)
-    res_df = res_df.sort_values(by=['Score', 'RSI_Weekly'], ascending=[False, True])
-    
-    # عرض أفضل الأسهم فقط (Top Opportunities)
-    top_picks = res_df[res_df['Score'] > 0].drop(columns=['Score'])
-    
-    print("=== أفضل الأسهم المرشحة للارتداد والتجميع ===")
-    if not top_picks.empty:
-        print(top_picks.to_string(index=False))
-    else:
-        print("جميع الأسهم الحالية في مستويات متوسطة، لا يوجد أسهم في قيعان حادة حالياً.")
+        # 1. حساب المتوسطات الأسية EMA 50 & EMA 200
+        ema_50 = ta.trend.ema_indicator(close_prices, window=50)
+        ema_200 = ta.trend.ema_indicator(close_prices, window=200)
 
-if __name__ == "__main__":
-    scan_egx_market()
+        # 2. حساب مؤشر القوة النسبية RSI 14
+        rsi = ta.momentum.rsi(close_prices, window=14)
+
+        # 3. حساب مؤشر MACD والهستوجرام
+        macd_object = ta.trend.MACD(close_prices)
+        macd_line = macd_object.macd()
+        signal_line = macd_object.macd_signal()
+        histogram = macd_object.macd_diff()
+
+        # أخذ قيم آخر شمعة (إغلاق الجلسة) والشمعة التي قبلها
+        last_close = close_prices.iloc[-1]
+        curr_ema50 = ema_50.iloc[-1]
+        curr_ema200 = ema_200.iloc[-1]
+        curr_rsi = rsi.iloc[-1]
+        
+        curr_macd = macd_line.iloc[-1]
+        curr_signal = signal_line.iloc[-1]
+        prev_macd = macd_line.iloc[-2]
+        prev_signal = signal_line.iloc[-2]
+        
+        curr_hist = histogram.iloc[-1]
+        prev_hist = histogram.iloc[-2]
+
+        # الشروط المطلوب تحققها:
+        # الشرط الأول: EMA 50 أعلى من EMA 200
+        cond1 = curr_ema50 > curr_ema200
+        
+        # الشرط الثاني: RSI بين 50 و 65
+        cond2 = 50 <= curr_rsi <= 65
+        
+        # الشرط الثالث: تقاطع MACD لأعلى (كان تحته وأصبح فوقه) مع زخم في الهستوجرام (ارتفاع قيمة الهستوجرام)
+        macd_cross_up = (prev_macd <= prev_signal) and (curr_macd > curr_signal)
+        histogram_momentum = curr_hist > prev_hist and curr_hist > 0
+        cond3 = macd_cross_up and histogram_momentum
+
+        # تجميع الأسهم التي تطابق كافة الشروط
+        if cond1 and cond2 and cond3:
+            results.append({
+                "Ticker": ticker,
+                "Price": round(last_close, 2),
+                "RSI": round(curr_rsi, 2),
+                "EMA_50": round(curr_ema50, 2),
+                "EMA_200": round(curr_ema200, 2),
+                "Signal": "فرصة دخول ممتازة"
+            })
+
+    except Exception as e:
+        continue
+
+# طباعة الجدول النهائي
+results_df = pd.DataFrame(results)
+
+print("=" * 65)
+print("             نتائج فحص البورصة المصرية (EGX) - شروط التقاطع والزخم             ")
+print("=" * 65)
+
+if not results_df.empty:
+    print(results_df.to_string(index=False))
+else:
+    print("لا توجد أسهم تطابق الشروط الفنية المحددة في إغلاق اليوم.")
+print("=" * 65)
