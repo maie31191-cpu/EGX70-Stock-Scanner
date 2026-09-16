@@ -2,28 +2,35 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# قائمة شاملة لجميع أسهم البورصة المصرية (EGX30 + EGX70 والشركات النشطة)
+# قائمة كاملة وشاملة لكافة الأسهم المدرجة بالبورصة المصرية
 tickers = [
-    # أسهم مؤشر EGX30 والقطاع المالي والبنوك
-    "COMI.CA", "HRHO.CA", "FWRY.CA", "EAST.CA", "SWDY.CA", "TMGH.CA", "MFPC.CA", 
-    "ABUK.CA", "EKHO.CA", "ETEL.CA", "AMOC.CA", "CIEB.CA", "ADIB.CA", "EXPA.CA", 
-    "EGBE.CA", "EIDF.CA", "BTFH.CA", "BINV.CA", "ATLC.CA", "VALO.CA", "CCAP.CA",
-
-    # أسهم العقارات والإنشاءات والخدمات الهندسية (EGX30 & EGX70)
-    "PHDC.CA", "HELI.CA", "ORAS.CA", "EMFD.CA", "MNHD.CA", "ORWE.CA", "ACGC.CA", 
+    # البنوك والخدمات المالية
+    "COMI.CA", "HRHO.CA", "FWRY.CA", "CCAP.CA", "CIEB.CA", "ADIB.CA", "EXPA.CA", 
+    "EGBE.CA", "EIDF.CA", "BTFH.CA", "BINV.CA", "ATLC.CA", "VALO.CA", "SAIB.CA",
+    "CANA.CA", "BLDY.CA", "CNTY.CA", "AIH.CA", "CICH.CA", "GRTE.CA", "BINV.CA",
+    "BOHI.CA", "EDBM.CA", "FRPX.CA", "EACB.CA", "KADP.CA", "EFIC.CA",
+    
+    # العقارات والتنمية والتطوير العمراني
+    "TMGH.CA", "PHDC.CA", "HELI.CA", "ORAS.CA", "EMFD.CA", "MNHD.CA", "ACGC.CA", 
     "EGCH.CA", "AMER.CA", "ODHO.CA", "AREH.CA", "UNIT.CA", "PORT.CA", "EGAL.CA",
-
-    # أسهم البتروكيماويات والأسمدة والطاقة
-    "SKPC.CA", "KIMA.CA", "TAQA.CA", "SVEN.CA", "EGAS.CA", "OIFI.CA",
-
-    # أسهم الصناعة والمنتجات الاستهلاكية والأغذية والأدوية (EGX70 & EGX30)
-    "ISPH.CA", "JUFO.CA", "MCRO.CA", "AUTO.CA", "EFID.CA", "DOMH.CA", "OLFI.CA", 
-    "ARAB.CA", "RAYA.CA", "RTVC.CA", "OCDI.CA", "ALCN.CA", "LCSW.CA", "ESRS.CA", 
-    "MORA.CA", "GOCO.CA", "DAPH.CA",
-
-    # أسهم الشحن والنقل والتغليف والخدمات
-    "EEII.CA", "CSAG.CA", "MPRC.CA", "UPSS.CA", "EPK.CA", "AIND.CA", "ELWA.CA", 
-    "MOIL.CA", "MIPH.CA", "VERT.CA", "SPMD.CA"
+    "ROYO.CA", "ARAB.CA", "ZMID.CA", "MENA.CA", "TAQA.CA", "ORHD.CA", "DAPH.CA",
+    "MEPA.CA", "ARPI.CA", "ELKA.CA", "UEGC.CA", "RTVC.CA", "HELI.CA", "AFMC.CA",
+    
+    # الكيماويات والبتروكيماويات والأسمدة والموارد الأساسية
+    "ABUK.CA", "MFPC.CA", "AMOC.CA", "SKPC.CA", "KIMA.CA", "SVEN.CA", "EGAS.CA", 
+    "OIFI.CA", "FERT.CA", "ISMA.CA", "ICID.CA", "VERT.CA", "ASPC.CA", "IPMI.CA",
+    "PACH.CA", "MIPH.CA", "LCSW.CA", "SPMD.CA",
+    
+    # الأغذية، المشروبات، الأدوية والرعاية الصحية
+    "EAST.CA", "JUFO.CA", "ISPH.CA", "MCRO.CA", "EFID.CA", "DOMH.CA", "OLFI.CA", 
+    "ORWE.CA", "AUTO.CA", "OCDI.CA", "ALCN.CA", "ESRS.CA", "MORA.CA", "GOCO.CA", 
+    "AJWA.CA", "RAYA.CA", "NINH.CA", "OBRI.CA", "DPH.CA", "CLHO.CA", "PHAR.CA",
+    "SUCE.CA", "ADCI.CA", "BIGP.CA", "SFC.CA", "AXPH.CA", "LATO.CA",
+    
+    # الاتصالات، التكنولوجيا، الشحن والنقل والخدمات
+    "SWDY.CA", "ETEL.CA", "EEII.CA", "CSAG.CA", "MPRC.CA", "UPSS.CA", "EPK.CA", 
+    "AIND.CA", "ELWA.CA", "MOIL.CA", "EITC.CA", "KRDI.CA", "ACEX.CA", "CMRT.CA",
+    "DSCW.CA", "TOWR.CA", "LATT.CA", "KASB.CA"
 ]
 
 results = []
@@ -35,10 +42,10 @@ def calculate_rsi(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-# إزالة أي تكرارات وترتيب الرموز
+# إزالة أي رموز مكررة وترتيبها
 tickers = sorted(list(set(tickers)))
 
-print(f"جاري فحص جميع أسهم البورصة المصرية (EGX30 + EGX70) بعدد {len(tickers)} سهم...")
+print(f"جاري فحص جميع أسهم البورصة المصرية السوق بالكامل بعدد {len(tickers)} سهم...")
 
 for ticker in tickers:
     try:
@@ -53,21 +60,21 @@ for ticker in tickers:
         else:
             close = df['Close']
 
-        # 1. حساب المتوسطات الأسية EMA 50 & EMA 200
+        # 1. EMA 50 & EMA 200
         ema_50 = close.ewm(span=50, adjust=False).mean()
         ema_200 = close.ewm(span=200, adjust=False).mean()
 
-        # 2. حساب مؤشر القوة النسبية RSI 14
+        # 2. RSI 14
         rsi = calculate_rsi(close, 14)
 
-        # 3. حساب مؤشر MACD (12, 26, 9) والهستوجرام
+        # 3. MACD (12, 26, 9) والهستوجرام
         ema_12 = close.ewm(span=12, adjust=False).mean()
         ema_26 = close.ewm(span=26, adjust=False).mean()
         macd_line = ema_12 - ema_26
         signal_line = macd_line.ewm(span=9, adjust=False).mean()
         histogram = macd_line - signal_line
 
-        # أخذ قيم الإغلاق الحالي والشمعة السابقة
+        # قيم الإغلاق والشمعة السابقة
         curr_close = close.iloc[-1]
         c_ema50, c_ema200 = ema_50.iloc[-1], ema_200.iloc[-1]
         c_rsi = rsi.iloc[-1]
@@ -77,19 +84,18 @@ for ticker in tickers:
         
         c_hist, p_hist = histogram.iloc[-1], histogram.iloc[-2]
 
-        # الشروط المطلوبة:
-        # 1. EMA 50 أعلى من EMA 200
+        # الشروط:
+        # 1. EMA 50 فوق EMA 200
         cond1 = c_ema50 > c_ema200
         
         # 2. RSI بين 50 و 65
         cond2 = 50 <= c_rsi <= 65
         
-        # 3. تقاطع MACD لأعلى مع زيادة في الهستوجرام (زخم إيجابي)
+        # 3. تقاطع MACD لأعلى مع زخم إيجابي في الهستوجرام
         macd_cross_up = (p_macd <= p_signal) and (c_macd > c_signal)
         hist_momentum = (c_hist > p_hist) and (c_hist > 0)
         cond3 = macd_cross_up and hist_momentum
 
-        # إضافة السهم الذي تحققت فيه جميع الشروط الفنية
         if cond1 and cond2 and cond3:
             results.append({
                 "Ticker": ticker,
@@ -105,7 +111,7 @@ for ticker in tickers:
 
 # طباعة الجدول النهائي
 print("\n" + "=" * 65)
-print("       نتائج فحص البورصة المصرية (EGX30 + EGX70) - شروط التقاطع والزخم       ")
+print("         نتائج فحص السوق الكامل - جميع أسهم البورصة المصرية         ")
 print("=" * 65)
 
 if results:
