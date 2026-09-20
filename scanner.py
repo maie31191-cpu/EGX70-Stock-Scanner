@@ -29,10 +29,12 @@ def calculate_macd(series, fast=12, slow=26, signal=9):
 
 def analyze_stock(ticker):
     try:
+        # جلب البيانات التاريخية لآخر 6 أشهر
         df = yf.download(ticker, period="6mo", interval="1d", progress=False)
         if df.empty or len(df) < 50:
             return None
 
+        # معالجة الأعمدة المتداخلة
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
@@ -41,8 +43,11 @@ def analyze_stock(ticker):
         low = df['Low']
         open_p = df['Open']
 
+        # حساب المؤشرات الفنية
         df['RSI'] = calculate_rsi(close)
         macd, signal_line, hist = calculate_macd(close)
+        df['MACD'] = macd
+        df['MACD_Signal'] = signal_line
         df['MACD_Hist'] = hist
         df['EMA_20'] = close.ewm(span=20, adjust=False).mean()
         df['EMA_50'] = close.ewm(span=50, adjust=False).mean()
@@ -51,7 +56,7 @@ def analyze_stock(ticker):
         last_close = close.iloc[last_idx]
         prev_close = close.iloc[last_idx - 1]
         
-        # حساب نسبة المكسب اليومي
+        # نسبة التغير اليومية
         daily_change_pct = ((last_close - prev_close) / prev_close) * 100
 
         last_rsi = df['RSI'].iloc[last_idx]
@@ -63,41 +68,48 @@ def analyze_stock(ticker):
         score = 0
         matches = []
 
+        # 1. شرط الاتجاه الصاعد (السعر فوق المتوسطات والمتوسط السريع فوق البطء)
         if last_close > last_ema20 and last_ema20 > last_ema50:
             score += 1
             matches.append("اتجاه صاعد")
 
+        # 2. شرط RSI المثالي (بين 45 و 68)
         if 45 <= last_rsi <= 68:
             score += 1
             matches.append(f"RSI {last_rsi:.1f}")
 
+        # 3. شرط زخم MACD (تزايد الأعمدة الإيجابية)
         if last_macd_hist > 0 and last_macd_hist > prev_macd_hist:
             score += 1
             matches.append("زخم MACD")
 
+        # 4. شرط الشموع الانعكاسية (ظل سفلي ضعف جسم الشمعة)
         body = abs(last_close - open_p.iloc[last_idx])
         lower_shadow = min(last_close, open_p.iloc[last_idx]) - low.iloc[last_idx]
         if lower_shadow > 2 * body and body > 0:
             score += 1
-            matches.append("شمعة انعكاسية")
+            matches.append("شمعة للانعكاس")
 
+        # 5. شرط موجات إليوت
         wave_desc = "غير محدد"
         if last_close > last_ema50 and 50 <= last_rsi <= 65:
             score += 1
-            wave_desc = "منطقة دعم الموجة 2"
+            wave_desc = "دعم الموجة 2 (تأهب للـ 3)"
             matches.append("دعم الموجة 2")
         elif last_close > last_ema20 and last_rsi > 65:
             wave_desc = "موجة دافعة صاعدة"
+        elif last_rsi < 48:
+            wave_desc = "قاع تجميعي"
 
-        # إظهار كل الأسهم المقبولة (التي حققت درجة 1 فأكثر أو نسب ربح إيجابية)
-        if score >= 1:
+        # إعادة الشرط الصارم: يجب أن يحقق السهم 3 شروط أو أكثر من أصل 5
+        if score >= 3:
             return {
                 "Ticker": ticker,
                 "Daily_Price": round(last_close, 2),
-                "Change_%": daily_change_pct,  # رقمياً للترتيب
+                "Change_%": daily_change_pct,
                 "Daily_RSI": round(last_rsi, 1),
                 "Score": f"{score}/5",
-                "Matches": ", ".join(matches) if matches else "لا توجد إشارات قوية",
+                "Matches": ", ".join(matches),
                 "Elliott_Wave_D": wave_desc
             }
 
@@ -107,7 +119,7 @@ def analyze_stock(ticker):
     return None
 
 def main():
-    print("جاري فحص جميع أسهم البورصة المصرية...")
+    print("جاري فحص الأسهم وتطبيق الشروط الفنية الصارمة...")
     results = []
     
     for ticker in EGX_TICKERS:
@@ -117,16 +129,16 @@ def main():
 
     if results:
         res_df = pd.DataFrame(results)
-        # ترتيب الأسهم حسب الأعلى ربحاً اليوم (Change_%)
+        # ترتيب الأسهم التي اجتازت الشروط حسب نسبة الربح
         res_df = res_df.sort_values(by="Change_%", ascending=False)
         
-        # إضافة علامة % وتنسيق الشكل النهائي
+        # تنسيق المخرجات
         res_df["Change_%"] = res_df["Change_%"].apply(lambda x: f"{x:+.2f}%")
         
-        print("\n=== جميع الأسهم المفحوصة مرتبة حسب نسبة الربح اليومي ===")
+        print("\n=== الأسهم المقبولة فقط (التي حققت الشروط الصارمة 3/5 أو أكثر) ===")
         print(res_df.to_string(index=False))
     else:
-        print("لم يتم العثور على بيانات.")
+        print("لم ينطبق التصفية الصارمة (3/5) على أي سهم في جلسة اليوم.")
 
 if __name__ == "__main__":
     main()
