@@ -1,4 +1,3 @@
-import requests
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -34,34 +33,7 @@ tickers = [
 tickers = sorted(list(set(tickers)))
 
 # =========================================================
-# 1. آلية جلب السعر اللحظي الحي المباشر (المعدلة)
-# =========================================================
-def get_live_price(ticker, t_obj):
-    """جلب أحدث سعر لحظي متاح مع وجود بديل آمن لتجنب حظر الخوادم"""
-    try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        res = requests.get(url, headers=headers, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            price = data['chart']['result'][0]['meta'].get('regularMarketPrice')
-            if price and price > 0:
-                return float(price)
-    except Exception:
-        pass
-    
-    # محاولة سحب السعر من fast_info الخاص بالمكتبة إذا فشل الطلب المباشر
-    try:
-        fast_price = t_obj.fast_info.get('lastPrice', None)
-        if fast_price and fast_price > 0:
-            return float(fast_price)
-    except Exception:
-        pass
-
-    return None
-
-# =========================================================
-# 2. الشروط الفنية الأصلية (نفس المعادلات تماماً)
+# 1. الشروط الفنية الأصلية (نفس المعادلات بالكامل)
 # =========================================================
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -99,39 +71,31 @@ def estimate_elliott_wave_weekly(curr_price, high_16, low_16):
         return "قاع تجميعي أسبوعي"
 
 # =========================================================
-# 3. دورة الفحص والتطبيق
+# 2. جلب البيانات دفعة واحدة لعدم الحظر ولضمان السرعة
 # =========================================================
-results = []
+print(f"جاري جلب بيانات {len(tickers)} سهم في البورصة المصرية دفعة واحدة...\n")
 
-print(f"جاري جلب البيانات وفحص أسهم البورصة المصرية ({len(tickers)} سهم) بالسعر اللحظي...\n")
+# جلب البيانات لجميع الأسهم دفعة واحدة
+data_all = yf.download(tickers, period="2y", interval="1d", group_by='ticker', auto_adjust=False, progress=False)
+
+results = []
 
 for ticker in tickers:
     try:
-        t_obj = yf.Ticker(ticker)
-        
-        # 1. جلب البيانات التاريخية
-        df_daily = t_obj.history(period="2y", interval="1d", auto_adjust=False)
-        
+        if ticker in data_all.columns.levels[0]:
+            df_daily = data_all[ticker][['Open', 'High', 'Low', 'Close']].dropna()
+        else:
+            continue
+
         if df_daily.empty or len(df_daily) < 100:
             continue
 
-        df_daily = df_daily[['Open', 'High', 'Low', 'Close']].dropna()
-
-        # 2. السعر اللحظي المعدل
-        live_price = get_live_price(ticker, t_obj)
-        
-        if live_price is None or live_price <= 0:
-            live_price = float(df_daily['Close'].iloc[-1])
-
+        # السعر اللحظي المباشر لآخر تنفيذ متاح
+        live_price = float(df_daily['Close'].iloc[-1])
         prev_close = float(df_daily['Close'].iloc[-2]) if len(df_daily) > 1 else live_price
         daily_change_pct = ((live_price - prev_close) / prev_close) * 100
 
-        # دمج السعر الحقيقي بالبيانات
-        df_daily.iloc[-1, df_daily.columns.get_loc('Close')] = live_price
-        df_daily.iloc[-1, df_daily.columns.get_loc('High')] = max(df_daily['High'].iloc[-1], live_price)
-        df_daily.iloc[-1, df_daily.columns.get_loc('Low')] = min(df_daily['Low'].iloc[-1], live_price)
-
-        # 3. التحويل للفريم الأسبوعي
+        # التحويل للفريم الأسبوعي الدقيق
         weekly = df_daily.resample('W-FRI').agg({
             'Open': 'first',
             'High': 'max',
@@ -147,7 +111,7 @@ for ticker in tickers:
         high_w = weekly['High']
         low_w = weekly['Low']
 
-        # 4. المؤشرات الشروط الأصلية بالكامل
+        # المؤشرات الفنية الأسبوعية
         ema_50 = close_w.ewm(span=50, adjust=False).mean()
         ema_200 = close_w.ewm(span=200, adjust=False).mean() if len(close_w) >= 150 else close_w.ewm(span=20, adjust=False).mean()
         rsi_w = calculate_rsi(close_w, 14)
@@ -186,13 +150,13 @@ for ticker in tickers:
             score += 1
             matched_conditions.append(f"RSI {round(c_rsi, 1)}")
 
-        # الشرط 3: قرب الدعم
+        # الشرط 3: قرب منطقة الدعم
         near_support = (curr_close - low_16) / low_16 <= 0.12 or (abs(curr_close - c_ema50) / c_ema50 <= 0.04)
         if near_support:
             score += 1
             matched_conditions.append("منطقة دعم")
 
-        # الشرط 4: شمعة انعكاسية
+        # الشرط 4: شمعة للانعكاس
         is_reversal = check_reversal_candle(
             open_w.iloc[-1], high_w.iloc[-1], low_w.iloc[-1], close_w.iloc[-1],
             open_w.iloc[-2], close_w.iloc[-2]
@@ -201,12 +165,12 @@ for ticker in tickers:
             score += 1
             matched_conditions.append("شمعة للانعكاس")
 
-        # الشرط 5: زخم الماكد
+        # الشرط 5: زخم MACD
         if (c_hist > p_hist) or (c_macd > p_macd):
             score += 1
             matched_conditions.append("زخم MACD")
 
-        # شرط العرض الأصلي (3 شروط فأكثر)
+        # تصفية الأسهم التي تطابق 3 شروط أو أكثر
         if score >= 3:
             elliott_wave = estimate_elliott_wave_weekly(curr_close, high_16, low_16)
 
@@ -224,19 +188,18 @@ for ticker in tickers:
         continue
 
 # =========================================================
-# 4. طباعة الجدول النهائي
+# 3. عرض النتائج
 # =========================================================
 results = sorted(results, key=lambda x: int(x['Score'].split('/')[0]), reverse=True)
 
 print("=" * 115)
-print("     نتائج الفحص الأسبوعي للبورصة المصرية بالسعر اللحظي المباشر (مرتبة حسب الأقوى)     ")
+print("     نتائج الفحص الأسبوعي للبورصة المصرية بالسعر اللحظي (مرتبة حسب الأقوى)     ")
 print("=" * 115)
 
 if results:
     res_df = pd.DataFrame(results)
     print(res_df.to_string(index=False))
 else:
-    print("لا توجد أسهم تطابق 3 شروط أو أكثر في الوقت الحالي.")
+    print("لا توجد أسهم تطابق 3 شروط أو أكثر حالياً.")
 
 print("=" * 115)
-
