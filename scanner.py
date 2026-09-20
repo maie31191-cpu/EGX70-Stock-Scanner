@@ -1,10 +1,10 @@
-import requests
-import yfinance as yf
+
+
+            import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
 
-# قائمة شاملة لجميع أسهم البورصة المصرية النشطة
+# قائمة أسهم البورصة المصرية
 tickers = [
     # البنوك والخدمات المالية
     "COMI.CA", "HRHO.CA", "FWRY.CA", "CCAP.CA", "CIEB.CA", "ADIB.CA", "EXPA.CA", 
@@ -32,14 +32,11 @@ tickers = [
 
 results = []
 
-# حساب RSI الصحيح والدقيق بالنعومة المطلوبة بدون إخراج قيم NaN
 def calculate_rsi(series, period=14):
     delta = series.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
-    rs = avg_gain / avg_loss
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
     return 100 - (100 / (1 + rs))
 
 def check_reversal_candle(open_p, high_p, low_p, close_p, prev_open, prev_close):
@@ -53,42 +50,30 @@ def check_reversal_candle(open_p, high_p, low_p, close_p, prev_open, prev_close)
 
     return is_hammer or is_engulfing or is_strong_green
 
-def estimate_elliott_wave_weekly(close_prices, high_16, low_16):
+def estimate_elliott_wave_daily(close_prices, high_20, low_20):
     curr = close_prices.iloc[-1]
-    if high_16 == low_16:
+    if high_20 == low_20:
         return "غير محدد"
     
-    retrace_ratio = (curr - low_16) / (high_16 - low_16)
+    retrace_ratio = (curr - low_20) / (high_20 - low_20)
     
     if 0.15 <= retrace_ratio <= 0.45:
-        return "الموجة 2 (تأهب للـ 3 الأسبوعية)"
+        return "الموجة 2 (تأهب للـ 3 اليومية)"
     elif 0.46 <= retrace_ratio <= 0.65:
-        return "الموجة 4 (تأهب للـ 5 الأسبوعية)"
+        return "الموجة 4 (تأهب للـ 5 اليومية)"
     elif retrace_ratio > 0.65:
-        return "موجة دافعة صاعدة أسبوعياً"
+        return "موجة دافعة صاعدة يومياً"
     else:
-        return "قاع تجميعي أسبوعي"
-
-def get_realtime_price(ticker):
-    try:
-        t = yf.Ticker(ticker)
-        fast = t.fast_info
-        if 'lastPrice' in fast and fast['lastPrice'] is not None and fast['lastPrice'] > 0:
-            return float(fast['lastPrice'])
-        if 'previousClose' in fast and fast['previousClose'] is not None and fast['previousClose'] > 0:
-            return float(fast['previousClose'])
-    except Exception:
-        pass
-    return None
+        return "قاع تجميعي يومي"
 
 tickers = sorted(list(set(tickers)))
 
-print(f"جاري فحص جميع أسهم البورصة المصرية على الفريم الأسبوعي بعدد {len(tickers)} سهم...")
+print(f"جاري فحص جميع أسهم البورصة المصرية على الفريم اليومي بعدد {len(tickers)} سهم...")
 
 for ticker in tickers:
     try:
-        # 1. جلب البيانات الأسبوعية (1wk)
-        df = yf.download(ticker, period="3y", interval="1wk", progress=False)
+        # جلب البيانات اليومية (1d)
+        df = yf.download(ticker, period="1y", interval="1d", progress=False)
         df = df.dropna()
 
         if df.empty or len(df) < 30:
@@ -105,66 +90,50 @@ for ticker in tickers:
             high_p = df['High']
             low_p = df['Low']
 
-        # 2. جلب السعر الحي اللحظي بدقة
-        live_price = get_realtime_price(ticker)
-        hist_last_close = float(close.iloc[-1])
-        
-        if live_price is None or live_price <= 0:
-            live_price = hist_last_close
-
-        hist_prev_close = float(close.iloc[-2]) if len(close) > 1 else hist_last_close
-        daily_change_pct = ((live_price - hist_prev_close) / hist_prev_close) * 100
-
-        # 1. EMA 50 & EMA 200
+        # 1. EMA 20 & EMA 50 اليومي
+        ema_20 = close.ewm(span=20, adjust=False).mean()
         ema_50 = close.ewm(span=50, adjust=False).mean()
-        ema_200 = close.ewm(span=200, adjust=False).mean() if len(close) >= 150 else close.ewm(span=20, adjust=False).mean()
 
-        # 2. RSI الأسبوعي
+        # 2. RSI اليومي
         rsi = calculate_rsi(close, 14)
 
-        # 3. MACD الأسبوعي
+        # 3. MACD اليومي
         ema_12 = close.ewm(span=12, adjust=False).mean()
         ema_26 = close.ewm(span=26, adjust=False).mean()
         macd_line = ema_12 - ema_26
         signal_line = macd_line.ewm(span=9, adjust=False).mean()
         histogram = macd_line - signal_line
 
-        # القيم الأسبوعية الأخيرة
         curr_close = close.iloc[-1]
-        c_ema50, c_ema200 = ema_50.iloc[-1], ema_200.iloc[-1]
+        c_ema20, c_ema50 = ema_20.iloc[-1], ema_50.iloc[-1]
         c_rsi = rsi.iloc[-1]
         
-        if pd.isna(c_rsi):
-            continue
-
         c_macd, p_macd = macd_line.iloc[-1], macd_line.iloc[-2]
-        c_signal = signal_line.iloc[-1]
         c_hist, p_hist = histogram.iloc[-1], histogram.iloc[-2]
 
-        low_16 = low_p.iloc[-16:].min()
-        high_16 = high_p.iloc[-16:].max()
+        low_20 = low_p.iloc[-20:].min()
+        high_20 = high_p.iloc[-20:].max()
 
-        # --- حساب درجات المطابقة المرنة (Weekly Matching Score) ---
         score = 0
         matched_conditions = []
 
-        # 1. الاتجاه العام أسبوعياً
-        if c_ema50 >= c_ema200 or curr_close >= c_ema50:
+        # 1. الاتجاه العام اليومي
+        if curr_close >= c_ema20 or c_ema20 >= c_ema50:
             score += 1
             matched_conditions.append("اتجاه صاعد")
 
-        # 2. نطاق RSI المرن (45 إلى 68 أسبوعياً)
+        # 2. RSI اليومي المرن (45 إلى 68)
         if 45 <= c_rsi <= 68:
             score += 1
-            matched_conditions.append(f"RSI {round(float(c_rsi), 1)}")
+            matched_conditions.append(f"RSI {round(c_rsi, 1)}")
 
-        # 3. قُرب الدعم الأسبوعي
-        near_support = (curr_close - low_16) / low_16 <= 0.12 or (abs(curr_close - c_ema50) / c_ema50 <= 0.04)
+        # 3. قرب الدعم اليومي
+        near_support = (curr_close - low_20) / low_20 <= 0.08 or (abs(curr_close - c_ema20) / c_ema20 <= 0.03)
         if near_support:
             score += 1
             matched_conditions.append("منطقة دعم")
 
-        # 4. شمعة انعكاسية أسبوعية
+        # 4. شمعة انعكاسية يومية
         is_reversal = check_reversal_candle(
             open_p.iloc[-1], high_p.iloc[-1], low_p.iloc[-1], close.iloc[-1],
             open_p.iloc[-2], close.iloc[-2]
@@ -173,39 +142,35 @@ for ticker in tickers:
             score += 1
             matched_conditions.append("شمعة انعكاسية")
 
-        # 5. زخم الماكد الأسبوعي
+        # 5. زخم MACD اليومي
         if (c_hist > p_hist) or (c_macd > p_macd):
             score += 1
             matched_conditions.append("زخم MACD")
 
-        # إظهار أي سهم محقق 3 شروط أو أكثر
         if score >= 3:
-            elliott_wave = estimate_elliott_wave_weekly(close, high_16, low_16)
+            elliott_wave = estimate_elliott_wave_daily(close, high_20, low_20)
 
             results.append({
                 "Ticker": ticker,
-                "Live_Price": f"{live_price:.4f}",       # عرض السعر الحي اللحظي بدقة
-                "Change_%": f"{daily_change_pct:+.2f}%",  # نسبة التغير اليومية
-                "Weekly_RSI": round(float(c_rsi), 1),
+                "Daily_Price": round(float(curr_close), 2),
+                "Daily_RSI": round(float(c_rsi), 1),
                 "Score": f"{score}/5",
                 "Matches": ", ".join(matched_conditions),
-                "Elliott_Wave_W": elliott_wave
+                "Elliott_Wave_D": elliott_wave
             })
 
     except Exception:
         continue
 
-# ترتيب النتائج من الأقوى للأقل
 results = sorted(results, key=lambda x: int(x['Score'].split('/')[0]), reverse=True)
 
-# طباعة الجدول النهائي
-print("\n" + "=" * 110)
-print("     نتائج الفحص المرن على الفريم الأسبوعي للبورصة المصرية بالسعر اللحظي (مرتبة حسب الأقوى)     ")
-print("=" * 110)
+print("\n" + "=" * 95)
+print("     نتائج الفحص اليومي للبورصة المصرية (تحديث يوم بيوم - إغلاق الجلسة)     ")
+print("=" * 95)
 
 if results:
     res_df = pd.DataFrame(results)
     print(res_df.to_string(index=False))
 else:
-    print("لا توجد أسهم تطابق الحد الأدنى من الشروط الحالية.")
-print("=" * 110)
+    print("لا توجد أسهم تطابق الحد الأدنى من الشروط اليومية.")
+print("=" * 95)
