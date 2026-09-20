@@ -66,27 +66,28 @@ def estimate_elliott_wave_daily(close_prices, high_20, low_20):
 
 tickers = sorted(list(set(tickers)))
 
-print(f"جاري فحص جميع أسهم البورصة المصرية على الفريم اليومي بعدد {len(tickers)} سهم...")
+print(f"جاري فحص جميع أسهم البورصة المصرية على الفريم اليومي المباشر بعدد {len(tickers)} سهم...")
 
 for ticker in tickers:
     try:
-        # جلب البيانات اليومية (1d)
-        df = yf.download(ticker, period="1y", interval="1d", progress=False)
-        df = df.dropna()
+        t_obj = yf.Ticker(ticker)
+        df = t_obj.history(period="1y", interval="1d")
 
         if df.empty or len(df) < 30:
             continue
 
-        if isinstance(df.columns, pd.MultiIndex):
-            close = df['Close'][ticker]
-            open_p = df['Open'][ticker]
-            high_p = df['High'][ticker]
-            low_p = df['Low'][ticker]
-        else:
-            close = df['Close']
-            open_p = df['Open']
-            high_p = df['High']
-            low_p = df['Low']
+        # جلب أحدث سعر تنفيذ مباشر
+        fast_info = t_obj.fast_info
+        live_price = getattr(fast_info, 'last_price', None)
+
+        # دمج السعر المباشر في تاريخ البيانات إذا كان متاحاً
+        if live_price is not None and not np.isnan(live_price) and live_price > 0:
+            df.iloc[-1, df.columns.get_loc('Close')] = live_price
+
+        close = df['Close']
+        open_p = df['Open']
+        high_p = df['High']
+        low_p = df['Low']
 
         # 1. EMA 20 & EMA 50 اليومي
         ema_20 = close.ewm(span=20, adjust=False).mean()
@@ -163,7 +164,7 @@ for ticker in tickers:
 results = sorted(results, key=lambda x: int(x['Score'].split('/')[0]), reverse=True)
 
 print("\n" + "=" * 95)
-print("     نتائج الفحص اليومي للبورصة المصرية (تحديث يوم بيوم - إغلاق الجلسة)     ")
+print("     نتائج الفحص اليومي للبورصة المصرية (تحديث السعر المباشر)     ")
 print("=" * 95)
 
 if results:
@@ -172,4 +173,3 @@ if results:
 else:
     print("لا توجد أسهم تطابق الحد الأدنى من الشروط اليومية.")
 print("=" * 95)
- 
