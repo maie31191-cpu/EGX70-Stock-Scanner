@@ -1,6 +1,8 @@
+import requests
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 # قائمة شاملة لجميع أسهم البورصة المصرية النشطة
 tickers = [
@@ -42,7 +44,6 @@ def check_reversal_candle(open_p, high_p, low_p, close_p, prev_open, prev_close)
     lower_shadow = min(open_p, close_p) - low_p
     upper_shadow = high_p - max(open_p, close_p)
     
-    # شمعة مطرقة أو ابتلاع إيجابي أو شمعة أسبوعية خضراء بذيل سفلي
     is_hammer = (lower_shadow >= 1.2 * body) and (body > 0)
     is_engulfing = (prev_close < prev_open) and (close_p > open_p) and (close_p >= prev_open)
     is_strong_green = (close_p > open_p) and (lower_shadow >= body * 0.4)
@@ -65,13 +66,29 @@ def estimate_elliott_wave_weekly(close_prices, high_16, low_16):
     else:
         return "قاع تجميعي أسبوعي"
 
+# دالة جلب السعر الحي اللحظي المباشر لحل مشكلة تأخير أسعار الخميس/الأحد
+def get_realtime_price(ticker):
+    try:
+        t = yf.Ticker(ticker)
+        fast = t.fast_info
+        if 'lastPrice' in fast and fast['lastPrice'] is not None and fast['lastPrice'] > 0:
+            return float(fast['lastPrice'])
+        if 'previousClose' in fast and fast['previousClose'] is not None and fast['previousClose'] > 0:
+            return float(fast['previousClose'])
+    except Exception:
+        pass
+    return None
+
 tickers = sorted(list(set(tickers)))
 
 print(f"جاري فحص جميع أسهم البورصة المصرية على الفريم الأسبوعي بعدد {len(tickers)} سهم...")
 
 for ticker in tickers:
     try:
-        # جلب البيانات الأسبوعية (1wk)
+        # 1. جلب السعر اللحظي الحي المباشر أولاً
+        live_price = get_realtime_price(ticker)
+
+        # 2. جلب البيانات التاريخية الأسبوعية (1wk)
         df = yf.download(ticker, period="3y", interval="1wk", progress=False)
         df = df.dropna()
 
@@ -88,6 +105,15 @@ for ticker in tickers:
             open_p = df['Open']
             high_p = df['High']
             low_p = df['Low']
+
+        # إذا تعذر جلب السعر اللحظي، نأخذ آخر إغلاق تاريخي
+        hist_last_close = float(close.iloc[-1])
+        if live_price is None or live_price <= 0:
+            live_price = hist_last_close
+
+        # حساب نسبة التغير اليومي اللحظي مقارنة بإغلاق اليوم السابق
+        hist_prev_close = float(close.iloc[-2]) if len(close) > 1 else hist_last_close
+        daily_change_pct = ((live_price - hist_prev_close) / hist_prev_close) * 100
 
         # 1. EMA 50 & EMA 200
         ema_50 = close.ewm(span=50, adjust=False).mean()
@@ -155,7 +181,8 @@ for ticker in tickers:
 
             results.append({
                 "Ticker": ticker,
-                "Price": round(float(curr_close), 2),
+                "Live_Price": f"{live_price:.4f}",       # عرض السعر المباشر بـ 4 أرقام عشريّة
+                "Change_%": f"{daily_change_pct:+.2f}%",  # نسبة التغير اليومي اللحظي
                 "Weekly_RSI": round(float(c_rsi), 1),
                 "Score": f"{score}/5",
                 "Matches": ", ".join(matched_conditions),
@@ -169,16 +196,13 @@ for ticker in tickers:
 results = sorted(results, key=lambda x: int(x['Score'].split('/')[0]), reverse=True)
 
 # طباعة الجدول النهائي
-print("\n" + "=" * 95)
-print("     نتائج الفحص المرن على الفريم الأسبوعي للبورصة المصرية (مرتبة حسب الأقوى)     ")
-print("=" * 95)
+print("\n" + "=" * 110)
+print("     نتائج الفحص المرن على الفريم الأسبوعي للبورصة المصرية بالسعر اللحظي (مرتبة حسب الأقوى)     ")
+print("=" * 110)
 
 if results:
     res_df = pd.DataFrame(results)
     print(res_df.to_string(index=False))
 else:
     print("لا توجد أسهم تطابق الحد الأدنى من الشروط الحالية.")
-print("=" * 95)
-
-
-
+print("=" * 110)
