@@ -1,53 +1,43 @@
-# ============================================================
-# EGX WEEKLY STOCK SCREENER - AUTO UPDATE VERSION
-# ============================================================
-
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
+from datetime import datetime
 
-# ------------------------------------------------------------
-# 1) قائمة الأسهم المصرية
-# ------------------------------------------------------------
+# =========================================================
+# EGX WEEKLY SCREENER - AUTO UPDATE
+# =========================================================
 
 tickers = [
-    # البنوك والخدمات المالية
-    "COMI.CA", "HRHO.CA", "FWRY.CA", "CCAP.CA", "CIEB.CA", "ADIB.CA",
-    "EXPA.CA", "EGBE.CA", "EIDF.CA", "BTFH.CA", "BINV.CA", "ATLC.CA",
-    "VALO.CA", "SAIB.CA", "CANA.CA", "BLDY.CA", "CNTY.CA", "AIH.CA",
-    "CICH.CA", "GRTE.CA", "EDBM.CA",
+    "COMI.CA", "HRHO.CA", "FWRY.CA", "CCAP.CA", "CIEB.CA",
+    "ADIB.CA", "EXPA.CA", "EGBE.CA", "EIDF.CA", "BTFH.CA",
+    "BINV.CA", "ATLC.CA", "VALO.CA", "SAIB.CA", "CANA.CA",
+    "BLDY.CA", "CNTY.CA", "AIH.CA", "CICH.CA", "GRTE.CA",
 
-    # العقارات والتنمية
-    "TMGH.CA", "PHDC.CA", "HELI.CA", "ORAS.CA", "EMFD.CA", "MNHD.CA",
-    "ACGC.CA", "EGCH.CA", "AMER.CA", "ODHO.CA", "AREH.CA", "UNIT.CA",
-    "PORT.CA", "EGAL.CA", "ROYO.CA", "ARAB.CA", "ZMID.CA", "MENA.CA",
-    "TAQA.CA", "ORHD.CA", "DAPH.CA",
+    "TMGH.CA", "PHDC.CA", "HELI.CA", "ORAS.CA", "EMFD.CA",
+    "MNHD.CA", "ACGC.CA", "EGCH.CA", "AMER.CA", "ODHO.CA",
+    "AREH.CA", "UNIT.CA", "PORT.CA", "EGAL.CA", "ROYO.CA",
+    "ARAB.CA", "ZMID.CA", "MENA.CA", "TAQA.CA", "ORHD.CA",
 
-    # الكيماويات والأسمدة
-    "ABUK.CA", "MFPC.CA", "AMOC.CA", "SKPC.CA", "KIMA.CA", "SVEN.CA",
-    "EGAS.CA", "OIFI.CA", "FERT.CA", "ISMA.CA", "ICID.CA", "VERT.CA",
-    "ASPC.CA", "SPMD.CA",
+    "ABUK.CA", "MFPC.CA", "AMOC.CA", "SKPC.CA", "KIMA.CA",
+    "SVEN.CA", "EGAS.CA", "OIFI.CA", "FERT.CA", "ISMA.CA",
+    "ICID.CA", "VERT.CA", "ASPC.CA", "SPMD.CA",
 
-    # الأغذية والأدوية والاستهلاك
-    "EAST.CA", "JUFO.CA", "ISPH.CA", "MCRO.CA", "EFID.CA", "DOMH.CA",
-    "OLFI.CA", "ORWE.CA", "AUTO.CA", "OCDI.CA", "ALCN.CA", "ESRS.CA",
-    "MORA.CA", "GOCO.CA", "AJWA.CA", "RAYA.CA", "OBRI.CA", "CLHO.CA",
-    "PHAR.CA",
+    "EAST.CA", "JUFO.CA", "ISPH.CA", "MCRO.CA", "EFID.CA",
+    "DOMH.CA", "OLFI.CA", "ORWE.CA", "AUTO.CA", "OCDI.CA",
+    "ALCN.CA", "ESRS.CA", "MORA.CA", "GOCO.CA", "AJWA.CA",
+    "RAYA.CA", "OBRI.CA", "CLHO.CA", "PHAR.CA",
 
-    # الاتصالات والتكنولوجيا والخدمات
-    "SWDY.CA", "ETEL.CA", "EEII.CA", "CSAG.CA", "MPRC.CA", "UPSS.CA",
-    "EPK.CA", "AIND.CA", "ELWA.CA", "MOIL.CA", "EITC.CA", "KRDI.CA"
+    "SWDY.CA", "ETEL.CA", "EEII.CA", "CSAG.CA", "MPRC.CA",
+    "UPSS.CA", "EPK.CA", "AIND.CA", "ELWA.CA", "MOIL.CA",
+    "EITC.CA", "KRDI.CA"
 ]
 
-tickers = sorted(list(set(tickers)))
 
+# =========================================================
+# RSI
+# =========================================================
 
-# ------------------------------------------------------------
-# 2) RSI
-# ------------------------------------------------------------
-
-def calculate_rsi(series, period=14):
+def RSI(series, period=14):
 
     delta = series.diff()
 
@@ -56,506 +46,489 @@ def calculate_rsi(series, period=14):
 
     avg_gain = gain.ewm(
         alpha=1 / period,
-        adjust=False,
-        min_periods=period
+        adjust=False
     ).mean()
 
     avg_loss = loss.ewm(
         alpha=1 / period,
-        adjust=False,
-        min_periods=period
+        adjust=False
     ).mean()
 
     rs = avg_gain / avg_loss
 
-    rsi = 100 - (100 / (1 + rs))
-
-    return rsi
+    return 100 - (100 / (1 + rs))
 
 
-# ------------------------------------------------------------
-# 3) شمعة انعكاسية
-# ------------------------------------------------------------
+# =========================================================
+# شمعة انعكاسية
+# =========================================================
 
-def check_reversal_candle(
-    open_p,
-    high_p,
-    low_p,
-    close_p,
-    prev_open,
-    prev_close
-):
+def reversal_candle(o, h, l, c, po, pc):
 
-    body = abs(close_p - open_p)
+    body = abs(c - o)
 
     if body == 0:
         body = 0.000001
 
-    lower_shadow = min(open_p, close_p) - low_p
-    upper_shadow = high_p - max(open_p, close_p)
+    lower_shadow = min(o, c) - l
+    upper_shadow = h - max(o, c)
 
-    # Hammer
-    is_hammer = (
-        lower_shadow >= 1.5 * body
+    hammer = (
+        lower_shadow >= body * 1.5
         and upper_shadow <= body
     )
 
-    # Bullish engulfing
-    is_engulfing = (
-        prev_close < prev_open
-        and close_p > open_p
-        and close_p >= prev_open
-        and open_p <= prev_close
+    bullish_engulfing = (
+        pc < po
+        and c > o
+        and c >= po
+        and o <= pc
     )
 
-    # Green candle with lower wick
-    is_strong_green = (
-        close_p > open_p
-        and lower_shadow >= 0.4 * body
+    strong_green = (
+        c > o
+        and lower_shadow >= body * 0.4
     )
 
     return (
-        is_hammer
-        or is_engulfing
-        or is_strong_green
+        hammer
+        or bullish_engulfing
+        or strong_green
     )
 
 
-# ------------------------------------------------------------
-# 4) Elliott تقديري
-# ------------------------------------------------------------
+# =========================================================
+# Elliott تقديري
+# =========================================================
 
-def estimate_elliott_wave_weekly(
-    close_prices,
-    high_prices,
-    low_prices
-):
+def elliott_signal(close, high, low):
 
-    if len(close_prices) < 20:
-        return "بيانات غير كافية"
-
-    recent_high = high_prices.iloc[-16:].max()
-    recent_low = low_prices.iloc[-16:].min()
-
-    if recent_high == recent_low:
+    if len(close) < 20:
         return "غير محدد"
 
-    curr = close_prices.iloc[-1]
+    low16 = low.iloc[-16:].min()
+    high16 = high.iloc[-16:].max()
 
-    retrace_ratio = (
-        (curr - recent_low)
-        / (recent_high - recent_low)
+    if high16 == low16:
+        return "غير محدد"
+
+    current = close.iloc[-1]
+
+    ratio = (
+        current - low16
+    ) / (
+        high16 - low16
     )
 
-    if retrace_ratio < 0.15:
-        return "قاع / بداية تجميع"
+    if ratio < 0.15:
+        return "قاع تجميعي"
 
-    elif 0.15 <= retrace_ratio <= 0.45:
+    elif ratio <= 0.45:
         return "تأهب للموجة 3"
 
-    elif 0.46 <= retrace_ratio <= 0.65:
+    elif ratio <= 0.65:
         return "تأهب للموجة 5"
 
-    elif retrace_ratio > 0.65:
-        return "اتجاه دافع صاعد"
-
-    return "غير محدد"
-
-
-# ------------------------------------------------------------
-# 5) استخراج الأعمدة
-# ------------------------------------------------------------
-
-def clean_downloaded_data(df, ticker):
-
-    if df.empty:
-        return None
-
-    # التعامل مع MultiIndex من yfinance
-    if isinstance(df.columns, pd.MultiIndex):
-
-        try:
-            close = df["Close"][ticker]
-            open_p = df["Open"][ticker]
-            high_p = df["High"][ticker]
-            low_p = df["Low"][ticker]
-            volume = df["Volume"][ticker]
-
-        except Exception:
-
-            close = df["Close"].iloc[:, 0]
-            open_p = df["Open"].iloc[:, 0]
-            high_p = df["High"].iloc[:, 0]
-            low_p = df["Low"].iloc[:, 0]
-            volume = df["Volume"].iloc[:, 0]
-
     else:
-
-        close = df["Close"]
-        open_p = df["Open"]
-        high_p = df["High"]
-        low_p = df["Low"]
-        volume = df["Volume"]
-
-    result = pd.DataFrame({
-        "Open": open_p,
-        "High": high_p,
-        "Low": low_p,
-        "Close": close,
-        "Volume": volume
-    })
-
-    result = result.dropna()
-
-    return result
+        return "موجة دافعة صاعدة"
 
 
-# ------------------------------------------------------------
-# 6) وقت تشغيل الفحص
-# ------------------------------------------------------------
+# =========================================================
+# بداية الفحص
+# =========================================================
 
-run_time = datetime.now()
-
-print("\n" + "=" * 100)
-print("        EGX AUTO UPDATE WEEKLY STOCK SCREENER")
+print("=" * 100)
+print("EGX WEEKLY STOCK SCREENER")
 print("=" * 100)
 
-print(f"وقت تشغيل الفحص: {run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+print(
+    "وقت التشغيل:",
+    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+)
 
-print(f"عدد الأسهم: {len(tickers)}")
+print(
+    "عدد الأسهم:",
+    len(tickers)
+)
 
-print("\nجاري تحميل أحدث البيانات المتاحة...")
-print("من فضلك انتظر...\n")
+print("\nجاري تحميل البيانات...\n")
 
-
-# ------------------------------------------------------------
-# 7) النتائج
-# ------------------------------------------------------------
 
 results = []
 
+errors = []
 
-# ------------------------------------------------------------
-# 8) فحص كل سهم
-# ------------------------------------------------------------
 
-for ticker in tickers:
+# =========================================================
+# فحص الأسهم
+# =========================================================
+
+for i, ticker in enumerate(tickers, 1):
+
+    print(
+        f"[{i}/{len(tickers)}] {ticker}",
+        end=" ... "
+    )
 
     try:
 
-        # ====================================================
-        # أولاً: البيانات الأسبوعية
-        # ====================================================
+        # -----------------------------------------------
+        # تحميل البيانات اليومية
+        # -----------------------------------------------
 
-        weekly_raw = yf.download(
+        data = yf.download(
             ticker,
             period="5y",
-            interval="1wk",
-            auto_adjust=False,
-            progress=False,
-            threads=False
-        )
-
-        weekly = clean_downloaded_data(
-            weekly_raw,
-            ticker
-        )
-
-        if weekly is None or len(weekly) < 60:
-            continue
-
-        weekly = weekly.sort_index()
-
-        # ----------------------------------------------------
-        # حذف الأسبوع الحالي غير المكتمل
-        # ----------------------------------------------------
-
-        today = pd.Timestamp.now()
-
-        last_date = weekly.index[-1]
-
-        # إذا كانت آخر شمعة ما زالت أسبوعًا جاريًا
-        # نستخدم آخر أسبوع مكتمل للتحليل
-        if last_date >= today - pd.Timedelta(days=6):
-
-            completed_weekly = weekly.iloc[:-1].copy()
-
-        else:
-
-            completed_weekly = weekly.copy()
-
-        if len(completed_weekly) < 50:
-            continue
-
-        # ====================================================
-        # السعر الأحدث المتاح
-        # ====================================================
-
-        daily_raw = yf.download(
-            ticker,
-            period="10d",
             interval="1d",
             auto_adjust=False,
             progress=False,
             threads=False
         )
 
-        daily = clean_downloaded_data(
-            daily_raw,
-            ticker
-        )
+        if data is None or data.empty:
 
-        if daily is None or daily.empty:
+            print("لا توجد بيانات")
+
+            errors.append(ticker)
+
             continue
 
-        daily = daily.sort_index()
+
+        # -----------------------------------------------
+        # إصلاح MultiIndex
+        # -----------------------------------------------
+
+        if isinstance(data.columns, pd.MultiIndex):
+
+            data.columns = data.columns.get_level_values(0)
+
+
+        # -----------------------------------------------
+        # التأكد من الأعمدة
+        # -----------------------------------------------
+
+        required = [
+            "Open",
+            "High",
+            "Low",
+            "Close"
+        ]
+
+        if not all(
+            col in data.columns
+            for col in required
+        ):
+
+            print("أعمدة ناقصة")
+
+            errors.append(ticker)
+
+            continue
+
+
+        data = data[
+            required
+        ].dropna()
+
+
+        if len(data) < 100:
+
+            print("بيانات غير كافية")
+
+            errors.append(ticker)
+
+            continue
+
+
+        # =================================================
+        # أحدث سعر
+        # =================================================
 
         latest_price = float(
-            daily["Close"].iloc[-1]
+            data["Close"].iloc[-1]
         )
 
-        latest_price_date = daily.index[-1]
+        latest_date = data.index[-1]
 
-        # ====================================================
-        # البيانات الأسبوعية للتحليل
-        # ====================================================
 
-        close = completed_weekly["Close"]
-        open_p = completed_weekly["Open"]
-        high_p = completed_weekly["High"]
-        low_p = completed_weekly["Low"]
+        # =================================================
+        # تحويل البيانات اليومية إلى أسبوعية
+        # =================================================
 
-        # ====================================================
-        # EMA 50
-        # ====================================================
+        weekly = data.resample(
+            "W-FRI"
+        ).agg({
 
-        ema_50 = close.ewm(
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last"
+
+        }).dropna()
+
+
+        # =================================================
+        # حذف الأسبوع الجاري
+        # =================================================
+
+        today = pd.Timestamp.today()
+
+        current_week_friday = (
+            today
+            + pd.offsets.Week(
+                weekday=4
+            )
+        )
+
+        if (
+            len(weekly) > 1
+            and weekly.index[-1] > today
+        ):
+
+            weekly = weekly.iloc[:-1]
+
+
+        if len(weekly) < 50:
+
+            print("أسابيع غير كافية")
+
+            errors.append(ticker)
+
+            continue
+
+
+        # =================================================
+        # الأسعار الأسبوعية
+        # =================================================
+
+        close = weekly["Close"]
+        open_p = weekly["Open"]
+        high = weekly["High"]
+        low = weekly["Low"]
+
+
+        # =================================================
+        # EMA
+        # =================================================
+
+        ema50 = close.ewm(
             span=50,
             adjust=False
         ).mean()
 
-        # ====================================================
-        # EMA 200
-        # ====================================================
-
-        ema_200 = close.ewm(
+        ema200 = close.ewm(
             span=200,
             adjust=False
         ).mean()
 
-        # ====================================================
-        # RSI أسبوعي
-        # ====================================================
 
-        rsi = calculate_rsi(
+        # =================================================
+        # RSI
+        # =================================================
+
+        rsi = RSI(
             close,
             14
         )
 
-        # ====================================================
-        # MACD أسبوعي
-        # ====================================================
 
-        ema_12 = close.ewm(
+        # =================================================
+        # MACD
+        # =================================================
+
+        ema12 = close.ewm(
             span=12,
             adjust=False
         ).mean()
 
-        ema_26 = close.ewm(
+        ema26 = close.ewm(
             span=26,
             adjust=False
         ).mean()
 
-        macd_line = ema_12 - ema_26
+        macd = ema12 - ema26
 
-        signal_line = macd_line.ewm(
+        signal = macd.ewm(
             span=9,
             adjust=False
         ).mean()
 
-        histogram = (
-            macd_line
-            - signal_line
+        histogram = macd - signal
+
+
+        # =================================================
+        # آخر أسبوع
+        # =================================================
+
+        c = float(close.iloc[-1])
+
+        e50 = float(
+            ema50.iloc[-1]
         )
 
-        # ====================================================
-        # القيم الأخيرة
-        # ====================================================
-
-        curr_close = float(close.iloc[-1])
-
-        c_ema50 = float(
-            ema_50.iloc[-1]
+        e200 = float(
+            ema200.iloc[-1]
         )
 
-        c_ema200 = float(
-            ema_200.iloc[-1]
-        )
-
-        c_rsi = float(
+        r = float(
             rsi.iloc[-1]
         )
 
-        c_macd = float(
-            macd_line.iloc[-1]
+        macd_now = float(
+            macd.iloc[-1]
         )
 
-        p_macd = float(
-            macd_line.iloc[-2]
+        macd_prev = float(
+            macd.iloc[-2]
         )
 
-        c_signal = float(
-            signal_line.iloc[-1]
-        )
-
-        p_signal = float(
-            signal_line.iloc[-2]
-        )
-
-        c_hist = float(
+        hist_now = float(
             histogram.iloc[-1]
         )
 
-        p_hist = float(
+        hist_prev = float(
             histogram.iloc[-2]
         )
 
-        # ====================================================
-        # الدعم والمقاومة
-        # ====================================================
 
-        low_16 = float(
-            low_p.iloc[-16:].min()
+        # =================================================
+        # آخر 16 أسبوع
+        # =================================================
+
+        low16 = float(
+            low.iloc[-16:].min()
         )
 
-        high_16 = float(
-            high_p.iloc[-16:].max()
+        high16 = float(
+            high.iloc[-16:].max()
         )
 
-        support_distance = (
-            (curr_close - low_16)
-            / low_16
-        )
 
-        ema50_distance = abs(
-            curr_close - c_ema50
-        ) / c_ema50
-
-        # ====================================================
+        # =================================================
         # SCORE
-        # ====================================================
+        # =================================================
 
         score = 0
 
-        matched_conditions = []
+        conditions = []
 
-        # ----------------------------------------------------
+
+        # -------------------------------------------------
         # 1 - الاتجاه
-        # ----------------------------------------------------
+        # -------------------------------------------------
+
+        if c > e50:
+
+            score += 1
+
+            if e50 > e200:
+
+                conditions.append(
+                    "اتجاه صاعد قوي"
+                )
+
+            else:
+
+                conditions.append(
+                    "فوق EMA50"
+                )
+
+
+        # -------------------------------------------------
+        # 2 - RSI
+        # -------------------------------------------------
+
+        if 45 <= r <= 68:
+
+            score += 1
+
+            conditions.append(
+                f"RSI {r:.1f}"
+            )
+
+
+        # -------------------------------------------------
+        # 3 - الدعم
+        # -------------------------------------------------
+
+        distance_support = (
+            (c - low16)
+            / low16
+        )
+
+        distance_ema = abs(
+            c - e50
+        ) / e50
+
 
         if (
-            curr_close > c_ema50
-            and c_ema50 > c_ema200
+            distance_support <= 0.12
+            or distance_ema <= 0.04
         ):
 
             score += 1
 
-            matched_conditions.append(
-                "اتجاه صاعد قوي"
-            )
-
-        elif curr_close > c_ema50:
-
-            score += 1
-
-            matched_conditions.append(
-                "اتجاه صاعد"
-            )
-
-        # ----------------------------------------------------
-        # 2 - RSI
-        # ----------------------------------------------------
-
-        if 45 <= c_rsi <= 68:
-
-            score += 1
-
-            matched_conditions.append(
-                f"RSI {c_rsi:.1f}"
-            )
-
-        # ----------------------------------------------------
-        # 3 - الدعم
-        # ----------------------------------------------------
-
-        near_support = (
-            support_distance <= 0.12
-            or ema50_distance <= 0.04
-        )
-
-        if near_support:
-
-            score += 1
-
-            matched_conditions.append(
+            conditions.append(
                 "منطقة دعم"
             )
 
-        # ----------------------------------------------------
-        # 4 - شمعة انعكاسية
-        # ----------------------------------------------------
 
-        is_reversal = check_reversal_candle(
+        # -------------------------------------------------
+        # 4 - شمعة انعكاسية
+        # -------------------------------------------------
+
+        rev = reversal_candle(
+
             open_p.iloc[-1],
-            high_p.iloc[-1],
-            low_p.iloc[-1],
+            high.iloc[-1],
+            low.iloc[-1],
             close.iloc[-1],
+
             open_p.iloc[-2],
             close.iloc[-2]
+
         )
 
-        if is_reversal:
+
+        if rev:
 
             score += 1
 
-            matched_conditions.append(
+            conditions.append(
                 "شمعة انعكاسية"
             )
 
-        # ----------------------------------------------------
+
+        # -------------------------------------------------
         # 5 - MACD
-        # ----------------------------------------------------
+        # -------------------------------------------------
 
-        macd_positive_momentum = (
-            c_hist > p_hist
-            or c_macd > p_macd
-            or (
-                c_macd > c_signal
-                and c_hist > 0
-            )
-        )
-
-        if macd_positive_momentum:
+        if (
+            hist_now > hist_prev
+            or macd_now > macd_prev
+        ):
 
             score += 1
 
-            matched_conditions.append(
+            conditions.append(
                 "زخم MACD"
             )
 
-        # ====================================================
-        # Elliott
-        # ====================================================
 
-        elliott_wave = estimate_elliott_wave_weekly(
+        # =================================================
+        # Elliott
+        # =================================================
+
+        wave = elliott_signal(
             close,
-            high_p,
-            low_p
+            high,
+            low
         )
 
-        # ====================================================
-        # لا نعرض إلا 3/5 أو أكثر
-        # ====================================================
+
+        # =================================================
+        # حفظ النتيجة
+        # =================================================
 
         if score >= 3:
 
@@ -572,93 +545,92 @@ for ticker in tickers:
 
                 "Price_Date":
                     str(
-                        latest_price_date.date()
+                        latest_date.date()
                     ),
 
                 "Weekly_Close":
                     round(
-                        curr_close,
+                        c,
                         2
                     ),
 
-                "Weekly_Data_Date":
+                "Weekly_Date":
                     str(
-                        completed_weekly.index[-1].date()
+                        weekly.index[-1].date()
                     ),
 
-                "Weekly_RSI":
+                "RSI":
                     round(
-                        c_rsi,
+                        r,
                         1
                     ),
 
                 "Score":
                     f"{score}/5",
 
-                "Matches":
-                    ", ".join(
-                        matched_conditions
+                "Conditions":
+                    "، ".join(
+                        conditions
                     ),
 
-                "Elliott_Wave":
-                    elliott_wave
+                "Elliott":
+                    wave
 
-            )
+            })
+
+
+        print(
+            f"تم | Score = {score}/5"
+        )
+
 
     except Exception as e:
 
-        # نتجاهل السهم الذي حدث فيه خطأ
-        # ونكمل بقية الأسهم
-
-        continue
-
-
-# ============================================================
-# 9) ترتيب النتائج
-# ============================================================
-
-def score_number(x):
-
-    try:
-        return int(
-            x["Score"].split("/")[0]
+        print(
+            "خطأ"
         )
 
-    except:
-        return 0
+        errors.append(
+            f"{ticker} -> {str(e)}"
+        )
 
+
+# =========================================================
+# ترتيب النتائج
+# =========================================================
 
 results = sorted(
+
     results,
-    key=lambda x: (
-        score_number(x),
-        x["Weekly_RSI"]
-        if not pd.isna(x["Weekly_RSI"])
-        else -1
-    ),
+
+    key=lambda x:
+        int(
+            x["Score"].split("/")[0]
+        ),
+
     reverse=True
+
 )
 
 
-# ============================================================
-# 10) عرض النتائج
-# ============================================================
+# =========================================================
+# عرض النتائج
+# =========================================================
 
-print("\n" + "=" * 120)
-
-print(
-    "             نتائج الفحص الأسبوعي - AUTO UPDATE"
-)
-
+print("\n\n")
+print("=" * 120)
+print("                 النتائج النهائية")
 print("=" * 120)
 
 
-if results:
+if len(results) > 0:
 
-    res_df = pd.DataFrame(results)
+    df_results = pd.DataFrame(
+        results
+    )
 
     print(
-        res_df.to_string(
+        df_results.to_string(
             index=False
         )
     )
@@ -666,38 +638,48 @@ if results:
 else:
 
     print(
-        "لا توجد أسهم تحقق 3 شروط أو أكثر."
+        "لم يتم العثور على أسهم تحقق 3 شروط أو أكثر."
     )
 
 
+# =========================================================
+# الأسهم التي حدث بها خطأ
+# =========================================================
+
+print("\n")
+print("=" * 120)
+print("الأسهم التي لم يتم تحميل بياناتها")
+print("=" * 120)
+
+
+if errors:
+
+    for item in errors:
+
+        print(
+            item
+        )
+
+else:
+
+    print(
+        "لا توجد أخطاء."
+    )
+
+
+# =========================================================
+# النهاية
+# =========================================================
+
+print("\n")
 print("=" * 120)
 
 print(
-    "\nملاحظات:"
+    "انتهى الفحص."
 )
 
 print(
-    "1- Latest_Price = أحدث سعر يومي استطاع المصدر توفيره."
-)
-
-print(
-    "2- Weekly_Close = آخر إغلاق أسبوعي مكتمل مستخدم في التحليل."
-)
-
-print(
-    "3- Price_Date = تاريخ أحدث سعر."
-)
-
-print(
-    "4- Weekly_Data_Date = تاريخ الأسبوع المستخدم في التحليل."
-)
-
-print(
-    "5- Elliott Wave هنا تقدير فني آلي وليست تأكيدًا لموجة إليوت."
-)
-
-print(
-    "6- عند تشغيل الكود مرة أخرى سيتم تحميل البيانات من جديد."
+    "عند تشغيل الكود مرة أخرى سيتم تحميل البيانات من جديد."
 )
 
 print("=" * 120)
