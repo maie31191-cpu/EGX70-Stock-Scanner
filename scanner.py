@@ -32,11 +32,14 @@ tickers = [
 
 results = []
 
+# حساب RSI الصحيح والدقيق بالنعومة المطلوبة بدون إخراج قيم NaN
 def calculate_rsi(series, period=14):
     delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
+    rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
 def check_reversal_candle(open_p, high_p, low_p, close_p, prev_open, prev_close):
@@ -66,7 +69,6 @@ def estimate_elliott_wave_weekly(close_prices, high_16, low_16):
     else:
         return "قاع تجميعي أسبوعي"
 
-# دالة جلب السعر الحي اللحظي المباشر لحل مشكلة تأخير أسعار الخميس/الأحد
 def get_realtime_price(ticker):
     try:
         t = yf.Ticker(ticker)
@@ -85,10 +87,7 @@ print(f"جاري فحص جميع أسهم البورصة المصرية على �
 
 for ticker in tickers:
     try:
-        # 1. جلب السعر اللحظي الحي المباشر أولاً
-        live_price = get_realtime_price(ticker)
-
-        # 2. جلب البيانات التاريخية الأسبوعية (1wk)
+        # 1. جلب البيانات الأسبوعية (1wk)
         df = yf.download(ticker, period="3y", interval="1wk", progress=False)
         df = df.dropna()
 
@@ -106,12 +105,13 @@ for ticker in tickers:
             high_p = df['High']
             low_p = df['Low']
 
-        # إذا تعذر جلب السعر اللحظي، نأخذ آخر إغلاق تاريخي
+        # 2. جلب السعر الحي اللحظي بدقة
+        live_price = get_realtime_price(ticker)
         hist_last_close = float(close.iloc[-1])
+        
         if live_price is None or live_price <= 0:
             live_price = hist_last_close
 
-        # حساب نسبة التغير اليومي اللحظي مقارنة بإغلاق اليوم السابق
         hist_prev_close = float(close.iloc[-2]) if len(close) > 1 else hist_last_close
         daily_change_pct = ((live_price - hist_prev_close) / hist_prev_close) * 100
 
@@ -134,6 +134,9 @@ for ticker in tickers:
         c_ema50, c_ema200 = ema_50.iloc[-1], ema_200.iloc[-1]
         c_rsi = rsi.iloc[-1]
         
+        if pd.isna(c_rsi):
+            continue
+
         c_macd, p_macd = macd_line.iloc[-1], macd_line.iloc[-2]
         c_signal = signal_line.iloc[-1]
         c_hist, p_hist = histogram.iloc[-1], histogram.iloc[-2]
@@ -153,7 +156,7 @@ for ticker in tickers:
         # 2. نطاق RSI المرن (45 إلى 68 أسبوعياً)
         if 45 <= c_rsi <= 68:
             score += 1
-            matched_conditions.append(f"RSI {round(c_rsi, 1)}")
+            matched_conditions.append(f"RSI {round(float(c_rsi), 1)}")
 
         # 3. قُرب الدعم الأسبوعي
         near_support = (curr_close - low_16) / low_16 <= 0.12 or (abs(curr_close - c_ema50) / c_ema50 <= 0.04)
@@ -175,14 +178,14 @@ for ticker in tickers:
             score += 1
             matched_conditions.append("زخم MACD")
 
-        # اظهار أي سهم محقق 3 شروط أو أكثر
+        # إظهار أي سهم محقق 3 شروط أو أكثر
         if score >= 3:
             elliott_wave = estimate_elliott_wave_weekly(close, high_16, low_16)
 
             results.append({
                 "Ticker": ticker,
-                "Live_Price": f"{live_price:.4f}",       # عرض السعر المباشر بـ 4 أرقام عشريّة
-                "Change_%": f"{daily_change_pct:+.2f}%",  # نسبة التغير اليومي اللحظي
+                "Live_Price": f"{live_price:.4f}",       # عرض السعر الحي اللحظي بدقة
+                "Change_%": f"{daily_change_pct:+.2f}%",  # نسبة التغير اليومية
                 "Weekly_RSI": round(float(c_rsi), 1),
                 "Score": f"{score}/5",
                 "Matches": ", ".join(matched_conditions),
